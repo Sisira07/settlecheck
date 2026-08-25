@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: settlecheck
+      POSTGRES_USER: settlecheck
+      POSTGRES_PASSWORD: settlecheck
+    ports:
+      - "5432:5432"
+    volumes:
+      - settlecheck_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U settlecheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: settlecheck
+      DB_USER: settlecheck
+      DB_PASSWORD: settlecheck
+    ports:
+      - "8080:8080"
+
+volumes:
+  settlecheck_pgdata:
