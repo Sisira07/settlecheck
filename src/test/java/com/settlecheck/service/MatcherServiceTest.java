@@ -23,7 +23,19 @@ class MatcherServiceTest {
 
     @Autowired private OrderRepository orderRepo;
     @Autowired private SettlementRepository settlementRepo;
+    @Autowired private ExceptionRecordRepository exceptionRepo;
+    @Autowired private MatchRecordRepository matchRepo;
+    @Autowired private AuditLogRepository auditRepo;
     @Autowired private MatcherService matcherService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        orderRepo.deleteAll();
+        settlementRepo.deleteAll();
+        exceptionRepo.deleteAll();
+        matchRepo.deleteAll();
+        auditRepo.deleteAll();
+    }
 
     @Test
     void exactMatch_isCaughtByPassOne() {
