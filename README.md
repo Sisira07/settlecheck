@@ -43,12 +43,15 @@ it never decides whether records match.
 
 ## Stack
 
-- Java 17, Spring Boot 3 (Web, Data JPA)
-- PostgreSQL
-- Docker + docker-compose
-- JUnit 5 (matcher correctness tests — see `MatcherServiceTest`)
+**Backend:** Java 17, Spring Boot 3 (Web, Data JPA), PostgreSQL,
+Docker + docker-compose, JUnit 5 (matcher correctness tests — see
+`MatcherServiceTest`)
 
-## Running it
+**Frontend:** React + Vite, React Router (real routed pages, not tab
+state), Framer Motion (page transitions, animated numbers), Recharts
+(match breakdown chart)
+
+## Running the backend
 
 ```bash
 docker compose up --build
@@ -66,12 +69,39 @@ curl -X POST http://localhost:8080/reconcile/run
 # see the report
 curl http://localhost:8080/reconcile/report
 
+# see every resolved match
+curl http://localhost:8080/matches
+
 # see exceptions with explanations
 curl http://localhost:8080/reconcile/exceptions
 
 # see the full reasoning trail for one record
 curl http://localhost:8080/audit/{recordId}
 ```
+
+## Running the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the printed `localhost:5173` URL. In dev mode, Vite proxies API calls
+to the backend on `:8080` (see `vite.config.js`) — both need to be running
+at once.
+
+For a single deployable artifact (no separate frontend server), build and
+fold the frontend into the Spring Boot app itself:
+
+```bash
+cd frontend
+npm run build
+```
+
+Copy everything from `frontend/dist/` into `src/main/resources/static/`,
+then `docker compose up --build` again — Spring Boot now serves the whole
+app on `:8080` alone.
 
 ## Running tests
 
