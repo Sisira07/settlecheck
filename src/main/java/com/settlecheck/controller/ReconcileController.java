@@ -1,5 +1,7 @@
 package com.settlecheck.controller;
 
+import com.settlecheck.model.MatchRecord;
+import com.settlecheck.repository.MatchRecordRepository;
 import com.settlecheck.dto.ReportResponse;
 import com.settlecheck.model.AuditLog;
 import com.settlecheck.model.ExceptionRecord;
@@ -22,17 +24,19 @@ public class ReconcileController {
     private final ExplainerService explainerService;
     private final ExceptionRecordRepository exceptionRepo;
     private final AuditLogRepository auditRepo;
+    private final MatchRecordRepository matchRepo;
 
     private MatcherService.ReconcileResult lastResult;
 
     public ReconcileController(DataGeneratorService dataGenerator, MatcherService matcherService,
                                 ExplainerService explainerService, ExceptionRecordRepository exceptionRepo,
-                                AuditLogRepository auditRepo) {
+                                AuditLogRepository auditRepo, MatchRecordRepository matchRepo) {
         this.dataGenerator = dataGenerator;
         this.matcherService = matcherService;
         this.explainerService = explainerService;
         this.exceptionRepo = exceptionRepo;
         this.auditRepo = auditRepo;
+        this.matchRepo = matchRepo;
     }
 
     /** Seeds a synthetic batch. Defaults produce a mix of all four cases. */
@@ -66,6 +70,11 @@ public class ReconcileController {
     @GetMapping("/reconcile/exceptions")
     public List<ExceptionRecord> getExceptions() {
         return exceptionRepo.findAll();
+    }
+    
+    @GetMapping("/matches")
+    public List<com.settlecheck.model.MatchRecord> getMatches() {
+        return matchRepo.findAll();
     }
 
     @GetMapping("/audit/{recordId}")

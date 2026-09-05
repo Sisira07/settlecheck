@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -19,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.hibernate.ddl-auto=create-drop"
 })
+@Transactional
 class MatcherServiceTest {
 
     @Autowired private OrderRepository orderRepo;
@@ -85,5 +87,18 @@ class MatcherServiceTest {
 
         assertThat(result.subsetMatches()).isZero();
         assertThat(result.exceptionsRaised()).isGreaterThan(0);
+    }
+    @Test
+    void mergedBatch_isCaughtByPassTwo() {
+        Instant now = Instant.now();
+        orderRepo.save(new Order("ORD-5A", 60_000, now));
+        orderRepo.save(new Order("ORD-5B", 40_000, now));
+
+        // Two orders paid out in one settlement
+        settlementRepo.save(new Settlement("STL-5", 98_000, 2_000, now.plus(1, ChronoUnit.DAYS)));
+
+        MatcherService.ReconcileResult result = matcherService.runReconciliation();
+
+        assertThat(result.subsetMatches()).isEqualTo(1);
     }
 }

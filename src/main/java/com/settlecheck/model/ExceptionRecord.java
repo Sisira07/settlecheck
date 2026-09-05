@@ -32,8 +32,8 @@ public class ExceptionRecord {
     public ExceptionRecord() {}
 
     public ExceptionRecord(List<String> orderIds, List<String> settlementIds, String reasonCode) {
-        this.orderIds = orderIds;
-        this.settlementIds = settlementIds;
+        this.orderIds = orderIds == null ? null : new java.util.ArrayList<>(orderIds);
+        this.settlementIds = settlementIds == null ? null : new java.util.ArrayList<>(settlementIds);
         this.reasonCode = reasonCode;
     }
 

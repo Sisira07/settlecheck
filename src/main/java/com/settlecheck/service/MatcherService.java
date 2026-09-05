@@ -134,6 +134,34 @@ public class MatcherService {
                 }
             }
         }
+
+        // N orders -> 1 settlement (merged batch)
+        Iterator<Settlement> settlementIt = settlements.iterator();
+        while (settlementIt.hasNext()) {
+            Settlement s = settlementIt.next();
+            List<Order> window = ordersInWindow(orders, s.getSettledAt());
+            long target = s.getAmountPaise() + s.getFeePaise();
+            long tolerance = feeTolerance(target);
+
+            List<Order> group = findOrderSubsetMatchingSum(window, target, tolerance);
+            if (group != null) {
+                int confidence = scoreConfidence(group.size(), target, sumOfOrders(group), tolerance);
+                if (confidence >= minConfidence) {
+                    List<String> orderIds = group.stream().map(Order::getOrderId).toList();
+                    persistMatch(orderIds, List.of(s.getSettlementId()), "SUBSET_SUM", confidence);
+                    s.setStatus("MATCHED");
+                    settlementRepo.save(s);
+                    for (Order o : group) {
+                        o.setStatus("MATCHED");
+                        orderRepo.save(o);
+                        orders.remove(o);
+                    }
+                    settlementIt.remove();
+                    count++;
+                }
+            }
+        }
+
         return count;
     }
 
@@ -165,9 +193,33 @@ public class MatcherService {
         chosen.remove(chosen.size() - 1);
         if (withCandidate != null) return withCandidate;
 
-        // Try skipping it (pruned automatically once remaining sum can't be reached
-        // since the list is sorted descending and later items are smaller)
+        // Try skipping it
         return search(sorted, index + 1, remaining, tolerance, chosen, budget);
+    }
+
+    private List<Order> findOrderSubsetMatchingSum(List<Order> candidates, long target, long tolerance) {
+        List<Order> sorted = new ArrayList<>(candidates);
+        sorted.sort((a, b) -> Long.compare(b.getAmountPaise(), a.getAmountPaise()));
+        return searchOrders(sorted, 0, target, tolerance, new ArrayList<>(), MAX_GROUP_SIZE);
+    }
+
+    private List<Order> searchOrders(List<Order> sorted, int index, long remaining, long tolerance,
+                                     List<Order> chosen, int budget) {
+        if (Math.abs(remaining) <= tolerance && !chosen.isEmpty()) {
+            return new ArrayList<>(chosen);
+        }
+        if (index >= sorted.size() || budget == 0 || remaining < -tolerance) {
+            return null;
+        }
+        Order candidate = sorted.get(index);
+
+        chosen.add(candidate);
+        List<Order> withCandidate = searchOrders(sorted, index + 1, remaining - candidate.getAmountPaise(),
+                tolerance, chosen, budget - 1);
+        chosen.remove(chosen.size() - 1);
+        if (withCandidate != null) return withCandidate;
+
+        return searchOrders(sorted, index + 1, remaining, tolerance, chosen, budget);
     }
 
     private int scoreConfidence(int groupSize, long target, long achievedSum, long tolerance) {
@@ -185,17 +237,19 @@ public class MatcherService {
             String reason = settlements.isEmpty() ? "MISSING_SETTLEMENT" : "LOW_CONFIDENCE_GROUP";
             ExceptionRecord ex = new ExceptionRecord(List.of(o.getOrderId()), List.of(), reason);
             exceptionRepo.save(ex);
-            log(ex.getExceptionId(), "EXCEPTION_RAISED", "NONE", null,
-                    "No settlement or settlement group matched order " + o.getOrderId()
-                            + " (amount " + o.getAmountPaise() + " paise) within tolerance/group-size bounds.");
+            String reasoning = "No settlement or settlement group matched order " + o.getOrderId()
+                             + " (amount " + o.getAmountPaise() + " paise) within tolerance/group-size bounds.";
+            log(ex.getExceptionId(), "EXCEPTION_RAISED", "NONE", null, reasoning);
+            log(o.getOrderId(), "EXCEPTION_RAISED", "NONE", null, reasoning);
             count++;
         }
         for (Settlement s : settlements) {
             ExceptionRecord ex = new ExceptionRecord(List.of(), List.of(s.getSettlementId()), "MISSING_ORDER");
             exceptionRepo.save(ex);
-            log(ex.getExceptionId(), "EXCEPTION_RAISED", "NONE", null,
-                    "Settlement " + s.getSettlementId() + " (amount " + s.getAmountPaise()
-                            + " paise) has no matching order or order group.");
+            String reasoning = "Settlement " + s.getSettlementId() + " (amount " + s.getAmountPaise()
+                             + " paise) has no matching order or order group.";
+            log(ex.getExceptionId(), "EXCEPTION_RAISED", "NONE", null, reasoning);
+            log(s.getSettlementId(), "EXCEPTION_RAISED", "NONE", null, reasoning);
             count++;
         }
         return count;
@@ -215,6 +269,18 @@ public class MatcherService {
         return out;
     }
 
+    private List<Order> ordersInWindow(List<Order> orders, java.time.Instant settledAt) {
+        if (settledAt == null) return new ArrayList<>();
+        List<Order> out = new ArrayList<>();
+        for (Order o : orders) {
+            Duration gap = Duration.between(o.getCreatedAt(), settledAt);
+            if (!gap.isNegative() && gap.toDays() <= settlementWindowDays) {
+                out.add(o);
+            }
+        }
+        return out;
+    }
+
     private long feeTolerance(long amountPaise) {
         return Math.round(amountPaise * (feeTolerancePercent / 100.0));
     }
@@ -223,12 +289,17 @@ public class MatcherService {
         return group.stream().mapToLong(Settlement::getAmountPaise).sum();
     }
 
+    private long sumOfOrders(List<Order> group) {
+        return group.stream().mapToLong(Order::getAmountPaise).sum();
+    }
+
     private void persistMatch(List<String> orderIds, List<String> settlementIds, String passType, int confidence) {
         MatchRecord m = new MatchRecord(orderIds, settlementIds, passType, confidence);
         matchRepo.save(m);
-        log(m.getMatchId(), "MATCH_" + passType, passType, confidence,
-                "Matched orders " + orderIds + " to settlements " + settlementIds
-                        + " with confidence " + confidence + "%.");
+        String reason = "Matched orders " + orderIds + " to settlements " + settlementIds + " with confidence " + confidence + "%.";
+        log(m.getMatchId(), "MATCH_" + passType, passType, confidence, reason);
+        for (String id : orderIds) log(id, "MATCH_" + passType, passType, confidence, reason);
+        for (String id : settlementIds) log(id, "MATCH_" + passType, passType, confidence, reason);
     }
 
     private void log(String recordId, String action, String passUsed, Integer confidence, String reasoning) {

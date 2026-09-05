@@ -29,8 +29,8 @@ public class MatchRecord {
     public MatchRecord() {}
 
     public MatchRecord(List<String> orderIds, List<String> settlementIds, String passType, int confidence) {
-        this.orderIds = orderIds;
-        this.settlementIds = settlementIds;
+        this.orderIds = orderIds == null ? null : new java.util.ArrayList<>(orderIds);
+        this.settlementIds = settlementIds == null ? null : new java.util.ArrayList<>(settlementIds);
         this.passType = passType;
         this.confidence = confidence;
     }
